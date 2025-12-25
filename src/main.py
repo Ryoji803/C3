@@ -3,6 +3,7 @@ import Repository
 import logging
 import os
 import time
+import webbrowser
 from datetime import datetime, timedelta
 import threading
 from dotenv import load_dotenv
@@ -68,14 +69,18 @@ ROOM_ID = "Room-A"
 USE_SQLITE = os.getenv("USE_SQLITE", "false").lower() == "true"
 
 if USE_SQLITE:
-    print("[Config] Using SqliteReservationRepository / SqlitePenaltyRepository / SqliteUserRepository")
+    print(
+        "[Config] Using SqliteReservationRepository / SqlitePenaltyRepository / SqliteUserRepository"
+    )
     # SQLite テーブルがなければ作成
     init_db()
     reservation_repo = SqliteReservationRepository(buffer_minutes=5)
     penalty_repo = SqlitePenaltyRepository()
     user_repo = SqliteUserRepository()
 else:
-    print("[Config] Using InMemoryReservationRepository / InMemoryPenaltyRepository / InMemoryUserRepository")
+    print(
+        "[Config] Using InMemoryReservationRepository / InMemoryPenaltyRepository / InMemoryUserRepository"
+    )
     reservation_repo = InMemoryReservationRepository(buffer_minutes=5)
     penalty_repo = InMemoryPenaltyRepository()
     user_repo = InMemoryUserRepository()
@@ -155,6 +160,12 @@ def create_occupancy_provider(
 
 
 # --- API Routes ---
+@app.before_request
+def redirect_browser_to_login():
+    # ブラウザがルート(/)にアクセスしてきたら /login に飛ばす
+    # (APIクライアントはJSONを期待するためAcceptヘッダが異なり、ここには引っかからない)
+    if request.path == "/" and "text/html" in request.headers.get("Accept", ""):
+        return redirect(url_for("login"))
 
 
 @app.route("/")
@@ -399,7 +410,9 @@ def login():
             session["user_id"] = user_id
             return redirect(url_for("app_ui"))
         else:
-            return render_template("login.html", error="IDまたはパスワードが間違っています")
+            return render_template(
+                "login.html", error="IDまたはパスワードが間違っています"
+            )
 
     return render_template("login.html")
 
@@ -601,7 +614,21 @@ def ping():
 if __name__ == "__main__":
     occupancy_provider = create_occupancy_provider(ai_camera_repository)
 
+    # バックグラウンド監視タスクの開始
     t = threading.Thread(target=background_monitoring_task, daemon=True)
     t.start()
 
+    # --- 【追加 2】ブラウザで /login を自動で開く関数 ---
+    def open_login_page():
+        # サーバーが立ち上がるのを少し待つ (1.5秒程度)
+        time.sleep(1.5)
+        print("[System] Opening login page in browser...")
+        # 明示的に /login のURLを指定して開く
+        webbrowser.open("http://localhost:8000/login")
+
+    # ブラウザを開く処理を別スレッドで開始
+    threading.Thread(target=open_login_page, daemon=True).start()
+    # ------------------------------------------------
+
+    # Flaskサーバーの起動
     app.run(host="0.0.0.0", port=8000, debug=False)
