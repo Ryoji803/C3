@@ -168,12 +168,17 @@ def redirect_browser_to_login():
         return redirect(url_for("login"))
 
 
-@app.route("/")
-def index():
+@app.route("/api/status")
+def get_status():
     """
     現在の部屋の状態と推論の生データを返す
     """
     return jsonify(system_status)
+
+
+@app.route("/")
+def index():
+    return render_template("landing.html")
 
 
 @app.route("/debug/ui")
